@@ -1,15 +1,14 @@
 /**
- * Template BenchmarkAdapter implementation.
+ * TAU-bench BenchmarkAdapter — clean-room implementation matching the
+ * v0.1 architecture pattern from the other shipped eval repos.
  *
- * Replace everything here with your benchmark-specific logic. The four
- * methods are all you need to implement; `runBenchmark()` from
- * `nexus-agents` handles the harness (concurrency, timeouts, progress,
- * partial failure, summary).
+ * v0.1 (this release): model-only baseline. Sends each scenario to the
+ * configured `IModelAdapter` and parses out a tool-call plan. Pass/fail
+ * = "did the model emit ≥1 valid-shape tool call".
  *
- * Type parameters:
- * - TInstance: one task/problem in your benchmark
- * - TPrediction: what your solver produces (patch, code, answer, etc.)
- * - TEvalResult: what your evaluator produces (pass/fail + context)
+ * The model-only baseline is necessarily synthetic for tool-use
+ * benchmarks — the real signal requires multi-turn execution against
+ * tau-bench's stateful environment, which is the v0.3 follow-up.
  *
  * @module adapter
  */
@@ -18,151 +17,133 @@ import type {
   BenchmarkAdapter,
   BenchmarkRunContext,
   BenchmarkRunSummary,
+  IModelAdapter,
 } from 'nexus-agents';
 
-// ============================================================================
-// Replace these types with your benchmark's actual shapes
-// ============================================================================
+import { loadTauBenchInstances } from './runner/instance-loader.js';
+import { generatePrediction } from './runner/agent-invoker.js';
+import type {
+  TauBenchAdapterConfig,
+  TauBenchDomain,
+  TauBenchEvalResult,
+  TauBenchInstance,
+  TauBenchPrediction,
+} from './types.js';
 
-/** One problem from your benchmark dataset. */
-export interface BenchmarkInstance {
-  readonly id: string;
-  readonly prompt: string;
-  readonly expectedOutput?: string;
-  // Add whatever fields your dataset has.
-}
-
-/** What your solver produces for one instance. */
-export interface BenchmarkPrediction {
-  readonly instanceId: string;
-  readonly output: string;
-  readonly durationMs: number;
-}
-
-/** Verdict for one instance. Adapter decides pass/fail via isPass(). */
-export interface BenchmarkEvalResult {
-  readonly instanceId: string;
-  readonly passed: boolean;
-  readonly reason?: string;
-}
-
-// ============================================================================
-// Configuration — what loadInstances() takes
-// ============================================================================
-
-export interface BenchmarkConfig {
-  /** Where the dataset lives. Replace with whatever your benchmark needs. */
-  readonly datasetPath?: string;
-  /** Variant within the benchmark family, if any (e.g., 'lite', 'full'). */
-  readonly variant?: string;
-}
-
-// ============================================================================
-// Adapter implementation
-// ============================================================================
-
-/**
- * Rename this class to reflect your benchmark (e.g., `HumanEvalAdapter`,
- * `MbppAdapter`).
- */
-export class TemplateBenchmarkAdapter
-  implements BenchmarkAdapter<BenchmarkInstance, BenchmarkPrediction, BenchmarkEvalResult>
+export class TauBenchAdapter
+  implements BenchmarkAdapter<TauBenchInstance, TauBenchPrediction, TauBenchEvalResult>
 {
-  readonly name = 'template-bench'; // replace: 'humaneval', 'mbpp', etc.
-  // Under exactOptionalPropertyTypes, `variant?: string` and
-  // `variant: string | undefined` are different types — the former
-  // means "may not be present", the latter means "must be present, may
-  // be the value undefined". The BenchmarkAdapter contract uses the
-  // former, so assign the field only when a variant was provided.
-  readonly variant?: string;
+  readonly name = 'tau-bench';
 
-  constructor(config: BenchmarkConfig = {}) {
-    if (config.variant !== undefined) this.variant = config.variant;
+  private readonly modelAdapter: IModelAdapter;
+  private readonly config: TauBenchAdapterConfig;
+  private readonly resultCache = new Map<string, TauBenchEvalResult>();
+
+  constructor(modelAdapter: IModelAdapter, config: TauBenchAdapterConfig = {}) {
+    this.modelAdapter = modelAdapter;
+    this.config = config;
   }
 
-  /**
-   * Load the task set. Called once per run.
-   *
-   * Your implementation should: read from disk / fetch from an API /
-   * load a fixture. Return an array of instances the orchestrator will
-   * iterate through.
-   */
-  loadInstances(_config: Record<string, unknown>): Promise<readonly BenchmarkInstance[]> {
-    // TODO: replace with your dataset loader
-    return Promise.resolve([
-      { id: 'example-1', prompt: 'add two numbers' },
-      { id: 'example-2', prompt: 'reverse a string' },
-    ]);
+  loadInstances(_runConfig: Record<string, unknown>): Promise<readonly TauBenchInstance[]> {
+    return Promise.resolve(
+      loadTauBenchInstances({
+        ...(this.config.source !== undefined && { source: this.config.source }),
+        ...(this.config.domains !== undefined && { domains: this.config.domains }),
+      })
+    );
   }
 
-  /**
-   * Run the solver on one instance. No evaluation here — this method
-   * only produces the prediction.
-   *
-   * Your implementation typically calls out to a CLI / API / sandbox.
-   * Honor `ctx.signal` to support cancellation.
-   */
-  runInstance(
-    instance: BenchmarkInstance,
+  async runInstance(
+    instance: TauBenchInstance,
     ctx: BenchmarkRunContext
-  ): Promise<BenchmarkPrediction> {
-    // TODO: replace with your actual solver invocation
-    const start = performance.now();
-    void ctx; // use ctx.signal, ctx.timeoutMs, ctx.onProgress as needed
-    return Promise.resolve({
-      instanceId: instance.id,
-      output: `stub output for ${instance.id}`,
-      durationMs: Math.round(performance.now() - start),
+  ): Promise<TauBenchPrediction> {
+    void ctx;
+    const result = await generatePrediction(instance, this.modelAdapter);
+
+    if (!result.ok) {
+      const empty: TauBenchPrediction = {
+        instanceId: instance.instanceId,
+        toolCalls: [],
+        modelLabel: this.modelAdapter.modelId,
+        durationMs: 0,
+      };
+      this.resultCache.set(instance.instanceId, {
+        instanceId: instance.instanceId,
+        domain: instance.domain,
+        passed: false,
+        toolCallCount: 0,
+        reason: result.error.message,
+      });
+      return empty;
+    }
+
+    const toolCallCount = result.value.toolCalls.length;
+    this.resultCache.set(instance.instanceId, {
+      instanceId: instance.instanceId,
+      domain: instance.domain,
+      passed: toolCallCount > 0,
+      toolCallCount,
+      ...(toolCallCount === 0 && {
+        reason: 'model returned no parsable tool calls',
+      }),
     });
+    return result.value;
   }
 
-  /**
-   * Evaluate a prediction against ground truth. Returns your
-   * benchmark-specific verdict — pass/fail semantics live here.
-   */
   evaluate(
-    instance: BenchmarkInstance,
-    prediction: BenchmarkPrediction
-  ): Promise<BenchmarkEvalResult> {
-    // TODO: replace with your actual evaluation logic (exec tests, diff
-    // against expected output, grade with an LLM, etc.)
-    const passed =
-      instance.expectedOutput === undefined
-        ? prediction.output.length > 0
-        : prediction.output === instance.expectedOutput;
+    instance: TauBenchInstance,
+    prediction: TauBenchPrediction
+  ): Promise<TauBenchEvalResult> {
+    const cached = this.resultCache.get(instance.instanceId);
+    if (cached !== undefined) return Promise.resolve(cached);
+    const toolCallCount = prediction.toolCalls.length;
     return Promise.resolve({
-      instanceId: instance.id,
-      passed,
-      ...(passed ? {} : { reason: 'output did not match expected' }),
+      instanceId: instance.instanceId,
+      domain: instance.domain,
+      passed: toolCallCount > 0,
+      toolCallCount,
     });
   }
 
-  /** Does this verdict count as a pass? Usually trivial. */
-  isPass(result: BenchmarkEvalResult): boolean {
+  isPass(result: TauBenchEvalResult): boolean {
     return result.passed;
   }
 
   /**
-   * Aggregate verdicts into a summary. Should be pure + deterministic.
-   * Put benchmark-specific breakdowns (by category, difficulty, etc.)
-   * into `metadata`.
+   * Per-domain pass-rate breakdown — TAU-bench scenarios split cleanly
+   * across `airline` and `retail`, and models often score very
+   * differently between the two.
    */
   summarize(
-    results: readonly BenchmarkEvalResult[],
+    results: readonly TauBenchEvalResult[],
     runTimeMs: number
   ): BenchmarkRunSummary {
     const passed = results.filter((r) => r.passed).length;
+    const byDomain: Record<TauBenchDomain, { total: number; passed: number }> = {
+      airline: { total: 0, passed: 0 },
+      retail: { total: 0, passed: 0 },
+    };
+    for (const r of results) {
+      byDomain[r.domain].total += 1;
+      if (r.passed) byDomain[r.domain].passed += 1;
+    }
     return {
       name: this.name,
-      variant: this.variant,
+      variant: 'model-only-baseline',
       total: results.length,
       passed,
       passRate: results.length > 0 ? passed / results.length : 0,
       runTimeMs,
       metadata: {
-        // Add benchmark-specific breakdowns here, e.g.:
-        // passByCategory: { ... },
-        // datasetVersion: '...',
+        byDomain: Object.fromEntries(
+          Object.entries(byDomain)
+            .filter(([, b]) => b.total > 0)
+            .map(([k, b]) => [
+              k,
+              { ...b, passRate: b.total > 0 ? b.passed / b.total : 0 },
+            ])
+        ),
+        note: 'pass/fail reflects "did the model emit ≥1 valid-shape tool call". Real grading requires multi-turn execution against tau-bench\'s stateful environment (v0.3 follow-up).',
       },
     };
   }

@@ -1,35 +1,62 @@
 #!/usr/bin/env node
 /**
- * Template CLI. Customize for your benchmark.
- *
- * Usage:
- *   nexus-eval-BENCHMARK run [--variant lite] [--limit N] [--concurrency N]
- *   nexus-eval-BENCHMARK --json > results.json
- *   nexus-eval-BENCHMARK --help
+ * TAU-bench evaluation CLI.
  *
  * @module cli
  */
 
 import { parseArgs } from 'node:util';
-import { runBenchmark } from 'nexus-agents';
-import { TemplateBenchmarkAdapter } from './adapter.js';
+import { runBenchmark, createOpenAIAdapter } from 'nexus-agents';
+import { TauBenchAdapter } from './adapter.js';
+import type { TauBenchDomain } from './types.js';
 
-const HELP = `nexus-eval-BENCHMARK — <replace with one-line description>
+const VALID_DOMAINS: ReadonlyArray<TauBenchDomain> = ['airline', 'retail'];
+
+const HELP = `nexus-eval-tau-bench — TAU-bench evaluation harness
 
 Usage:
-  nexus-eval-BENCHMARK [run] [options]
-  nexus-eval-BENCHMARK --version
-  nexus-eval-BENCHMARK --help
+  nexus-eval-tau-bench [run] [options]
+  nexus-eval-tau-bench --version
+  nexus-eval-tau-bench --help
 
 Options:
-  --variant <name>      Benchmark variant (depends on your benchmark).
-  --limit <n>           Limit instances evaluated. Default: all.
-  --concurrency <n>     Max parallel solver calls. Default: 1.
-  --timeout <ms>        Per-instance timeout. Default: 300000.
-  --json                Emit JSON summary instead of human text.
-  --help, -h            Show this help.
-  --version, -v         Show version.
+  --model-id <id>             Model identifier passed to the OpenAI-compat
+                              endpoint. Default: env MODEL_ID or 'gpt-4o'.
+  --source <fixture|path>     Where to load scenarios from. Default: fixture.
+                              'fixture' loads the bundled three-scenario smoke
+                              set; <path> points at a .jsonl matching the
+                              upstream tau-bench schema.
+  --domains <comma-list>      Filter by domain (airline,retail).
+  --limit <n>                 Limit scenarios. Default: all.
+  --concurrency <n>           Max parallel solver calls. Default: 1.
+  --timeout <ms>              Per-instance timeout. Default: 300000.
+  --json                      JSON summary instead of human text.
+  --help, -h                  Show this help.
+  --version, -v               Show version.
+
+Environment:
+  OPENAI_API_KEY      (required) auth for the OpenAI-compat endpoint.
+  OPENAI_BASE_URL     (optional) override base URL.
+  MODEL_ID            (optional) default model — overridden by --model-id.
+
+Notes:
+  v0.1 is a model-only baseline — sends each scenario's user intent +
+  agent instructions to the model and parses out a single-turn tool-call
+  plan. Pass/fail reflects "did the model emit ≥1 valid-shape tool call",
+  NOT real multi-turn grading. v0.3 will plug in ICliAdapter for the full
+  agentic loop against tau-bench's stateful environment.
 `;
+
+function parseDomains(input: string | undefined): TauBenchDomain[] | undefined {
+  if (input === undefined || input === '') return undefined;
+  const parts = input.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  for (const p of parts) {
+    if (!(VALID_DOMAINS as readonly string[]).includes(p)) {
+      throw new Error(`Invalid --domains value '${p}'. Must be one of: ${VALID_DOMAINS.join(', ')}`);
+    }
+  }
+  return parts as TauBenchDomain[];
+}
 
 async function main(argv: readonly string[]): Promise<number> {
   const args = argv.slice(2);
@@ -38,14 +65,16 @@ async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
   if (args.includes('--version') || args.includes('-v')) {
-    process.stdout.write('nexus-eval-BENCHMARK 0.0.1\n');
+    process.stdout.write('nexus-eval-tau-bench 0.1.0\n');
     return 0;
   }
 
   const parsed = parseArgs({
     args: args[0] === 'run' ? args.slice(1) : args,
     options: {
-      variant: { type: 'string' },
+      'model-id': { type: 'string' },
+      source: { type: 'string' },
+      domains: { type: 'string' },
       limit: { type: 'string' },
       concurrency: { type: 'string', default: '1' },
       timeout: { type: 'string', default: '300000' },
@@ -55,13 +84,34 @@ async function main(argv: readonly string[]): Promise<number> {
     strict: true,
   });
 
-  const limit = parsed.values.limit !== undefined ? Number(parsed.values.limit) : undefined;
+  const apiKey = process.env['OPENAI_API_KEY']?.trim();
+  if (apiKey === undefined || apiKey === '') {
+    process.stderr.write(
+      'Error: OPENAI_API_KEY is not set. Set it to the auth token for your\n' +
+        'OpenAI-compat endpoint (real OpenAI, a workspace proxy, vLLM, etc.).\n'
+    );
+    return 2;
+  }
+
+  const modelId =
+    parsed.values['model-id'] ?? process.env['MODEL_ID'] ?? 'gpt-4o';
+  const baseUrl = process.env['OPENAI_BASE_URL'];
+  const limit =
+    parsed.values.limit !== undefined ? Number(parsed.values.limit) : undefined;
   const concurrency = Number(parsed.values.concurrency ?? '1');
   const timeoutMs = Number(parsed.values.timeout ?? '300000');
+  const domains = parseDomains(parsed.values.domains);
 
-  const adapter = new TemplateBenchmarkAdapter(
-    parsed.values.variant !== undefined ? { variant: parsed.values.variant } : {}
-  );
+  const modelAdapter = createOpenAIAdapter({
+    apiKey,
+    modelId,
+    ...(baseUrl !== undefined && baseUrl !== '' && { baseUrl }),
+  });
+
+  const adapter = new TauBenchAdapter(modelAdapter, {
+    ...(parsed.values.source !== undefined && { source: parsed.values.source }),
+    ...(domains !== undefined && { domains }),
+  });
 
   const summary = await runBenchmark(adapter, {}, {
     concurrency,
@@ -78,10 +128,24 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
   } else {
     process.stdout.write('\n');
-    process.stdout.write(`${adapter.name}${adapter.variant !== undefined ? ` (${adapter.variant})` : ''}\n`);
-    process.stdout.write(`  passed:  ${String(summary.passed)} / ${String(summary.total)}\n`);
-    process.stdout.write(`  rate:    ${(summary.passRate * 100).toFixed(1)}%\n`);
-    process.stdout.write(`  runtime: ${(summary.runTimeMs / 1000).toFixed(1)}s\n`);
+    process.stdout.write(`${adapter.name} (model=${modelId})\n`);
+    process.stdout.write(
+      `  produced:   ${String(summary.passed)} / ${String(summary.total)} non-empty tool-call plans\n`
+    );
+    process.stdout.write(`  rate:       ${(summary.passRate * 100).toFixed(1)}%\n`);
+    process.stdout.write(`  runtime:    ${(summary.runTimeMs / 1000).toFixed(1)}s\n`);
+    const meta = summary.metadata as {
+      byDomain?: Record<string, { total: number; passed: number; passRate: number }>;
+    };
+    if (meta.byDomain !== undefined) {
+      process.stdout.write('  by domain:\n');
+      for (const [name, stats] of Object.entries(meta.byDomain)) {
+        process.stdout.write(
+          `    ${name.padEnd(8)}  ${String(stats.passed)}/${String(stats.total)} ` +
+            `(${(stats.passRate * 100).toFixed(1)}%)\n`
+        );
+      }
+    }
   }
 
   return summary.passed === summary.total ? 0 : 1;
