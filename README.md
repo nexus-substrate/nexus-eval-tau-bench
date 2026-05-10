@@ -2,7 +2,7 @@
 
 TAU-bench evaluation harness for [nexus-agents](https://github.com/williamzujkowski/nexus-agents) — implements the `BenchmarkAdapter` contract from nexus-agents ≥ 2.33.1.
 
-> **Status**: v0.1 model-only baseline. Bundled three-scenario smoke fixture spanning airline + retail domains, tool-call prompt template, JSON-array extractor, IModelAdapter-driven runner. v0.2 will add a GitHub-fetch loader against `sierra-research/tau-bench`; v0.3 will plug in `ICliAdapter` for the full multi-turn agentic flow against tau-bench's stateful environment.
+> **Status**: v0.3 — agentic flow with stub environment. Opt in with `agenticMode: true` (or `--agentic-mode`); the model emits one tool call at a time against a stub responder built from `instance.expectedTools`. Pass/fail is still "≥1 expected tool call" — full grading via the upstream airline / retail Python environment is the v0.4 follow-up. v0.2's GitHub-fetch loader + tool-coverage diagnostics remain the default mode.
 
 ## Read this first — what v0.1 actually grades
 
