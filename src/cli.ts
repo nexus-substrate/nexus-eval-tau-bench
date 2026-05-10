@@ -78,6 +78,8 @@ async function main(argv: readonly string[]): Promise<number> {
       'model-id': { type: 'string' },
       source: { type: 'string' },
       domains: { type: 'string' },
+      'agentic-mode': { type: 'boolean', default: false },
+      'agentic-turn-budget': { type: 'string' },
       limit: { type: 'string' },
       concurrency: { type: 'string', default: '1' },
       timeout: { type: 'string', default: '300000' },
@@ -114,6 +116,10 @@ async function main(argv: readonly string[]): Promise<number> {
   const adapter = new TauBenchAdapter(modelAdapter, {
     ...(parsed.values.source !== undefined && { source: parsed.values.source }),
     ...(domains !== undefined && { domains }),
+    ...(parsed.values['agentic-mode'] === true && { agenticMode: true }),
+    ...(parsed.values['agentic-turn-budget'] !== undefined && {
+      agenticTurnBudget: Number(parsed.values['agentic-turn-budget']),
+    }),
   });
 
   const summary = await runBenchmark(adapter, {}, {
