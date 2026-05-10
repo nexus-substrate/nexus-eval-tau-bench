@@ -75,16 +75,8 @@ export class TauBenchAdapter
       return empty;
     }
 
-    const toolCallCount = result.value.toolCalls.length;
-    this.resultCache.set(instance.instanceId, {
-      instanceId: instance.instanceId,
-      domain: instance.domain,
-      passed: toolCallCount > 0,
-      toolCallCount,
-      ...(toolCallCount === 0 && {
-        reason: 'model returned no parsable tool calls',
-      }),
-    });
+    const verdict = computeVerdict(instance, result.value.toolCalls);
+    this.resultCache.set(instance.instanceId, verdict);
     return result.value;
   }
 
@@ -94,13 +86,7 @@ export class TauBenchAdapter
   ): Promise<TauBenchEvalResult> {
     const cached = this.resultCache.get(instance.instanceId);
     if (cached !== undefined) return Promise.resolve(cached);
-    const toolCallCount = prediction.toolCalls.length;
-    return Promise.resolve({
-      instanceId: instance.instanceId,
-      domain: instance.domain,
-      passed: toolCallCount > 0,
-      toolCallCount,
-    });
+    return Promise.resolve(computeVerdict(instance, prediction.toolCalls));
   }
 
   isPass(result: TauBenchEvalResult): boolean {
@@ -145,4 +131,48 @@ export class TauBenchAdapter
       },
     };
   }
+}
+
+/**
+ * Build the per-instance verdict from the model's tool calls.
+ *
+ * v0.2 piece 2: tracks coverage of `instance.expectedTools` (count +
+ * fraction) and lists tool names emitted by the model that aren't in
+ * the dataset's expected list. Pass/fail is still "≥1 valid-shape tool
+ * call" — real test-based pass/fail requires the multi-turn agentic
+ * flow (v0.3).
+ */
+function computeVerdict(
+  instance: TauBenchInstance,
+  toolCalls: TauBenchPrediction['toolCalls']
+): TauBenchEvalResult {
+  const toolCallCount = toolCalls.length;
+  const calledNames = new Set(toolCalls.map((c) => c.name));
+  const expectedSet = new Set(instance.expectedTools);
+  const expectedToolsCount = instance.expectedTools.length;
+  let expectedToolsCalled = 0;
+  for (const expected of expectedSet) {
+    if (calledNames.has(expected)) expectedToolsCalled += 1;
+  }
+  const unexpectedToolCalls: string[] = [];
+  for (const name of calledNames) {
+    if (!expectedSet.has(name)) unexpectedToolCalls.push(name);
+  }
+  unexpectedToolCalls.sort();
+
+  return {
+    instanceId: instance.instanceId,
+    domain: instance.domain,
+    passed: toolCallCount > 0,
+    toolCallCount,
+    ...(expectedToolsCount > 0 && {
+      expectedToolsCalled,
+      expectedToolsCount,
+      toolCoverage: expectedToolsCalled / expectedToolsCount,
+    }),
+    ...(unexpectedToolCalls.length > 0 && { unexpectedToolCalls }),
+    ...(toolCallCount === 0 && {
+      reason: 'model returned no parsable tool calls',
+    }),
+  };
 }
