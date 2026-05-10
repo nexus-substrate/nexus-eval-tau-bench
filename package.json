@@ -1,12 +1,12 @@
 {
-  "name": "nexus-eval-BENCHMARK",
-  "version": "0.0.1",
-  "description": "TEMPLATE — Replace with: '<benchmark-name> evaluation harness for nexus-agents'",
+  "name": "nexus-eval-tau-bench",
+  "version": "0.1.0",
+  "description": "TAU-bench evaluation harness for nexus-agents — tool-use customer-service benchmark across airline + retail scenario domains",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "nexus-eval-BENCHMARK": "dist/cli.js"
+    "nexus-eval-tau-bench": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -20,7 +20,11 @@
     "nexus-agents",
     "nexus-agents-eval",
     "benchmark",
-    "evaluation"
+    "evaluation",
+    "tau-bench",
+    "tool-use",
+    "agent",
+    "sierra"
   ],
   "author": "",
   "license": "MIT",
