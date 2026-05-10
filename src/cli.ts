@@ -22,10 +22,13 @@ Usage:
 Options:
   --model-id <id>             Model identifier passed to the OpenAI-compat
                               endpoint. Default: env MODEL_ID or 'gpt-4o'.
-  --source <fixture|path>     Where to load scenarios from. Default: fixture.
+  --source <fixture|github|github:<ref>|path>
+                              Where to load scenarios from. Default: fixture.
                               'fixture' loads the bundled three-scenario smoke
-                              set; <path> points at a .jsonl matching the
-                              upstream tau-bench schema.
+                              set; 'github' fetches from sierra-research/tau-bench
+                              main branch with on-disk cache (set GITHUB_TOKEN
+                              if rate-limited); 'github:<ref>' pins a branch /
+                              tag / commit SHA; <path> points at a local .jsonl.
   --domains <comma-list>      Filter by domain (airline,retail).
   --limit <n>                 Limit scenarios. Default: all.
   --concurrency <n>           Max parallel solver calls. Default: 1.
@@ -65,7 +68,7 @@ async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
   if (args.includes('--version') || args.includes('-v')) {
-    process.stdout.write('nexus-eval-tau-bench 0.1.0\n');
+    process.stdout.write('nexus-eval-tau-bench 0.2.0\n');
     return 0;
   }
 

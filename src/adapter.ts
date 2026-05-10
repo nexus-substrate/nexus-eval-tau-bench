@@ -45,12 +45,10 @@ export class TauBenchAdapter
   }
 
   loadInstances(_runConfig: Record<string, unknown>): Promise<readonly TauBenchInstance[]> {
-    return Promise.resolve(
-      loadTauBenchInstances({
-        ...(this.config.source !== undefined && { source: this.config.source }),
-        ...(this.config.domains !== undefined && { domains: this.config.domains }),
-      })
-    );
+    return loadTauBenchInstances({
+      ...(this.config.source !== undefined && { source: this.config.source }),
+      ...(this.config.domains !== undefined && { domains: this.config.domains }),
+    });
   }
 
   async runInstance(
