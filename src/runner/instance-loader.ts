@@ -17,6 +17,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 import type { TauBenchInstance } from '../types.js';
+import { loadFromGithub, type LoadFromGithubOptions } from './github-loader.js';
 
 const FIXTURE: readonly TauBenchInstance[] = [
   {
@@ -46,21 +47,24 @@ const FIXTURE: readonly TauBenchInstance[] = [
   },
 ];
 
-export function loadTauBenchInstances(args: {
+export async function loadTauBenchInstances(args: {
   readonly source?: 'fixture' | 'github' | string;
   readonly domains?: ReadonlyArray<TauBenchInstance['domain']>;
   readonly maxInstances?: number;
-}): readonly TauBenchInstance[] {
+  readonly githubOptions?: LoadFromGithubOptions;
+}): Promise<readonly TauBenchInstance[]> {
   const source = args.source ?? 'fixture';
 
   let all: readonly TauBenchInstance[];
   if (source === 'fixture') {
     all = FIXTURE;
   } else if (source === 'github' || source.startsWith('github:')) {
-    throw new Error(
-      'GitHub-fetch source is not yet implemented (v0.2 follow-up). ' +
-        'Use --source <path-to.jsonl> with a local copy of sierra-research/tau-bench scenarios for now.'
-    );
+    const ref = source.startsWith('github:') ? source.slice('github:'.length) : undefined;
+    all = await loadFromGithub({
+      ...(args.githubOptions ?? {}),
+      ...(ref !== undefined && ref !== '' && { ref }),
+      ...(args.domains !== undefined && { domains: args.domains }),
+    });
   } else {
     all = loadFromJsonl(source);
   }

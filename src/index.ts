@@ -15,6 +15,8 @@ export type {
 
 // Lower-level building blocks.
 export { loadTauBenchInstances } from './runner/instance-loader.js';
+export { loadFromGithub, DEFAULT_TAU_BENCH_REF } from './runner/github-loader.js';
+export type { LoadFromGithubOptions } from './runner/github-loader.js';
 export { generatePrediction } from './runner/agent-invoker.js';
 export type { GeneratePredictionOptions } from './runner/agent-invoker.js';
 export { extractToolCalls } from './runner/tool-call-extractor.js';
