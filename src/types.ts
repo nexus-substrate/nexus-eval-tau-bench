@@ -90,6 +90,12 @@ export interface TauBenchEvalResult {
    */
   readonly unexpectedToolCalls?: ReadonlyArray<string>;
   readonly reason?: string;
+  /** v0.3: agent turns used in agenticMode. Undefined for v0.2 single-shot. */
+  readonly turnsUsed?: number;
+  /** v0.3: agent stop reason. Undefined for v0.2 single-shot. */
+  readonly agentStopReason?: string;
+  /** v0.3: true iff the agent invoked transfer_to_human_agents. */
+  readonly transferredToHuman?: boolean;
 }
 
 export interface TauBenchAdapterConfig {
@@ -97,13 +103,23 @@ export interface TauBenchAdapterConfig {
    * Where to load scenarios from.
    *
    * - `'fixture'` (default): bundled airline + retail smoke set
-   * - `'github'`: fetch from `sierra-research/tau-bench` (v0.2 follow-up — not yet implemented)
+   * - `'github'`: fetch from `sierra-research/tau-bench`
+   * - `'github:<ref>'`: pin a branch / tag / commit SHA
    * - any other string: treat as an absolute path to a local `.jsonl`
    *   file matching the upstream schema
    */
   readonly source?: 'fixture' | 'github' | string;
   /** Filter scenarios to specific domains. */
   readonly domains?: ReadonlyArray<TauBenchDomain>;
-  /** Reserved for v0.2 GitHub-fetch caching. */
+  /** v0.2 GitHub-fetch caching root. */
   readonly cacheDir?: string;
+  /**
+   * v0.3: drive the model as an agent that emits tool calls one at a
+   * time (with a stub responder), instead of single-turn batch.
+   * Pass/fail unchanged ("≥1 expected tool call"). Real environment
+   * grading is the v0.4 follow-up. Requires nexus-agents >= 2.72.1.
+   */
+  readonly agenticMode?: boolean;
+  /** v0.3: turn budget when agenticMode is on. Default: profile-derived. */
+  readonly agenticTurnBudget?: number;
 }

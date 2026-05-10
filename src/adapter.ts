@@ -22,6 +22,7 @@ import type {
 
 import { loadTauBenchInstances } from './runner/instance-loader.js';
 import { generatePrediction } from './runner/agent-invoker.js';
+import { runAgenticFlow, type AgenticFlowResult } from './runner/agentic-flow.js';
 import type {
   TauBenchAdapterConfig,
   TauBenchDomain,
@@ -56,6 +57,9 @@ export class TauBenchAdapter
     ctx: BenchmarkRunContext
   ): Promise<TauBenchPrediction> {
     void ctx;
+    if (this.config.agenticMode === true) {
+      return this.runInstanceAgentic(instance, ctx);
+    }
     const result = await generatePrediction(instance, this.modelAdapter);
 
     if (!result.ok) {
@@ -78,6 +82,39 @@ export class TauBenchAdapter
     const verdict = computeVerdict(instance, result.value.toolCalls);
     this.resultCache.set(instance.instanceId, verdict);
     return result.value;
+  }
+
+  /**
+   * v0.3: drive the model as an agent emitting tool calls one at a
+   * time. Stub-responder simulates plausible tool results so the loop
+   * can continue. Verdict still based on `expectedTools` overlap; v0.4
+   * will swap in real upstream environment grading.
+   */
+  private async runInstanceAgentic(
+    instance: TauBenchInstance,
+    ctx: BenchmarkRunContext
+  ): Promise<TauBenchPrediction> {
+    const flow = await runAgenticFlow(instance, this.modelAdapter, {
+      ...(this.config.agenticTurnBudget !== undefined && {
+        turnBudget: this.config.agenticTurnBudget,
+      }),
+      ...(ctx.signal !== undefined && { signal: ctx.signal }),
+    });
+    this.cacheAgenticVerdict(instance, flow);
+    return flow.prediction;
+  }
+
+  private cacheAgenticVerdict(
+    instance: TauBenchInstance,
+    flow: AgenticFlowResult
+  ): void {
+    const verdict = computeVerdict(instance, flow.prediction.toolCalls);
+    this.resultCache.set(instance.instanceId, {
+      ...verdict,
+      turnsUsed: flow.agentRun.turnsUsed,
+      agentStopReason: flow.agentRun.stopReason,
+      ...(flow.transferredToHuman && { transferredToHuman: true }),
+    });
   }
 
   evaluate(
