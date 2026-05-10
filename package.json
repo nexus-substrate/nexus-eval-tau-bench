@@ -1,6 +1,6 @@
 {
   "name": "nexus-eval-tau-bench",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TAU-bench evaluation harness for nexus-agents — tool-use customer-service benchmark across airline + retail scenario domains",
   "type": "module",
   "main": "dist/index.js",
@@ -35,7 +35,7 @@
     "dist/"
   ],
   "peerDependencies": {
-    "nexus-agents": ">=2.33.1"
+    "nexus-agents": ">=2.72.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
