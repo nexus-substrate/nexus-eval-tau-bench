@@ -88,6 +88,69 @@ describe('TauBenchAdapter', () => {
     expect(meta.byDomain['airline']).toEqual({ total: 1, passed: 1, passRate: 1 });
     expect(meta.byDomain['retail']).toEqual({ total: 1, passed: 0, passRate: 0 });
   });
+
+  it('v0.2 piece 2: tracks expected-tool coverage when expectedTools is non-empty', async () => {
+    const response =
+      '```json\n[{"name": "lookup_booking", "arguments": {}}, {"name": "lookup_booking", "arguments": {"id": "x"}}]\n```';
+    const adapter = new TauBenchAdapter(makeMockModelAdapter(response));
+    const inst: TauBenchInstance = {
+      instanceId: 'a',
+      domain: 'airline',
+      userIntent: 'q',
+      expectedTools: ['lookup_booking', 'cancel_booking'],
+    };
+    const prediction = await adapter.runInstance(inst, {} as never);
+    const verdict = await adapter.evaluate(inst, prediction);
+    expect(verdict.expectedToolsCount).toBe(2);
+    expect(verdict.expectedToolsCalled).toBe(1); // only lookup_booking, despite duplicate calls
+    expect(verdict.toolCoverage).toBe(0.5);
+  });
+
+  it('v0.2 piece 2: flags unexpected tool calls (hallucinations)', async () => {
+    const response =
+      '```json\n[{"name": "lookup_booking", "arguments": {}}, {"name": "wave_magic_wand", "arguments": {}}]\n```';
+    const adapter = new TauBenchAdapter(makeMockModelAdapter(response));
+    const inst: TauBenchInstance = {
+      instanceId: 'a',
+      domain: 'airline',
+      userIntent: 'q',
+      expectedTools: ['lookup_booking', 'cancel_booking'],
+    };
+    const prediction = await adapter.runInstance(inst, {} as never);
+    const verdict = await adapter.evaluate(inst, prediction);
+    expect(verdict.unexpectedToolCalls).toEqual(['wave_magic_wand']);
+  });
+
+  it('v0.2 piece 2: omits coverage fields when expectedTools is empty', async () => {
+    const response = '```json\n[{"name": "x", "arguments": {}}]\n```';
+    const adapter = new TauBenchAdapter(makeMockModelAdapter(response));
+    const inst: TauBenchInstance = {
+      instanceId: 'a',
+      domain: 'airline',
+      userIntent: 'q',
+      expectedTools: [],
+    };
+    const prediction = await adapter.runInstance(inst, {} as never);
+    const verdict = await adapter.evaluate(inst, prediction);
+    expect(verdict.expectedToolsCount).toBeUndefined();
+    expect(verdict.expectedToolsCalled).toBeUndefined();
+    expect(verdict.toolCoverage).toBeUndefined();
+  });
+
+  it('v0.2 piece 2: omits unexpectedToolCalls when all calls are expected', async () => {
+    const response =
+      '```json\n[{"name": "lookup_booking", "arguments": {}}]\n```';
+    const adapter = new TauBenchAdapter(makeMockModelAdapter(response));
+    const inst: TauBenchInstance = {
+      instanceId: 'a',
+      domain: 'airline',
+      userIntent: 'q',
+      expectedTools: ['lookup_booking', 'cancel_booking'],
+    };
+    const prediction = await adapter.runInstance(inst, {} as never);
+    const verdict = await adapter.evaluate(inst, prediction);
+    expect(verdict.unexpectedToolCalls).toBeUndefined();
+  });
 });
 
 describe('extractToolCalls', () => {

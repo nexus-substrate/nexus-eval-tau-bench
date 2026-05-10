@@ -73,11 +73,22 @@ export interface TauBenchEvalResult {
   /** Number of tool calls the model emitted. */
   readonly toolCallCount: number;
   /**
-   * v0.3 placeholder — will track which expected tools the model
-   * actually invoked, distinguishing "called the right tool" from
-   * "called any tool".
+   * v0.2 piece 2: count of `expectedTools` (from the dataset row) that
+   * the model actually called. `expectedToolsCount` is the denominator.
+   * `toolCoverage` = expectedToolsCalled / expectedToolsCount when
+   * expectedToolsCount > 0, otherwise undefined.
    */
   readonly expectedToolsCalled?: number;
+  /** Total expected tools for this scenario (dataset-supplied). */
+  readonly expectedToolsCount?: number;
+  /** Fraction of expected tools that were called. 0..1. */
+  readonly toolCoverage?: number;
+  /**
+   * v0.2 piece 2: tool names the model emitted that are NOT in the
+   * instance's `expectedTools`. Useful for spotting hallucinations
+   * without a hardcoded per-domain toolset whitelist.
+   */
+  readonly unexpectedToolCalls?: ReadonlyArray<string>;
   readonly reason?: string;
 }
 
