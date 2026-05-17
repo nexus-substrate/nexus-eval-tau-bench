@@ -5,7 +5,7 @@
  * agent's tool calls + simulates plausible responses. This is NOT a
  * real grader — full grading requires running upstream's airline /
  * retail Python environment (v0.4 follow-up tracked at
- * [tau-bench#4](https://github.com/williamzujkowski/nexus-eval-tau-bench/issues/4)).
+ * [tau-bench#4](https://github.com/nexus-substrate/nexus-eval-tau-bench/issues/4)).
  *
  * Why ship the stub anyway:
  *

@@ -1,6 +1,6 @@
 # nexus-eval-tau-bench
 
-TAU-bench evaluation harness for [nexus-agents](https://github.com/williamzujkowski/nexus-agents) — implements the `BenchmarkAdapter` contract from nexus-agents ≥ 2.33.1.
+TAU-bench evaluation harness for [nexus-agents](https://github.com/nexus-substrate/nexus-agents) — implements the `BenchmarkAdapter` contract from nexus-agents ≥ 2.33.1.
 
 > **Status**: v0.3 — agentic flow with stub environment. Opt in with `agenticMode: true` (or `--agentic-mode`); the model emits one tool call at a time against a stub responder built from `instance.expectedTools`. Pass/fail is still "≥1 expected tool call" — full grading via the upstream airline / retail Python environment is the v0.4 follow-up. v0.2's GitHub-fetch loader + tool-coverage diagnostics remain the default mode.
 
@@ -16,7 +16,7 @@ Why ship v0.1 anyway:
 
 If you need real TAU-bench numbers right now, run upstream's [Sierra reference harness](https://github.com/sierra-research/tau-bench) directly. This repo's full grading lands at v0.3.
 
-This repo follows the [nexus-agents harness-extraction policy](https://github.com/williamzujkowski/nexus-agents/issues/2514) — benchmarks live in standalone `nexus-eval-*` repos so they evolve independently.
+This repo follows the [nexus-agents harness-extraction policy](https://github.com/nexus-substrate/nexus-agents/issues/2514) — benchmarks live in standalone `nexus-eval-*` repos so they evolve independently.
 
 ## Install
 
@@ -93,7 +93,7 @@ for (const [name, stats] of Object.entries(meta.byDomain)) {
 | TBD   | **v0.2 — Toolset validation**. Cross-check emitted tool names against the scenario's domain toolset; flag hallucinations.                      |
 | TBD   | **v0.3 — Agentic flow**. Plug in `ICliAdapter` + the upstream tau-bench environment for the real multi-turn grading-by-final-state metric. |
 
-Cross-repo tracking lives at [nexus-agents #2519](https://github.com/williamzujkowski/nexus-agents/issues/2519) (Tier 2 prioritisation pass).
+Cross-repo tracking lives at [nexus-agents #2519](https://github.com/nexus-substrate/nexus-agents/issues/2519) (Tier 2 prioritisation pass).
 
 ## The contract
 
