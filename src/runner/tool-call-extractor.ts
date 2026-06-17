@@ -11,7 +11,17 @@
  * @module runner/tool-call-extractor
  */
 
-const FENCED_JSON_RE = /```(?:json|JSON)?\s*\n([\s\S]*?)```/g;
+// Match a fenced ```json (or untagged ```) block.
+// Note: `[^\n]*` (not `\s*`) before the newline avoids the `\s*\n`
+// quantifier overlap that allowed polynomial backtracking on untrusted
+// model output (CodeQL js/polynomial-redos). The optional-tag group is
+// also non-overlapping with the trailing inline-whitespace run.
+const FENCED_JSON_RE = /```(?:json|JSON)?[ \t]*\r?\n([\s\S]*?)```/g;
+
+// Untrusted model output is bounded before the regex sink. The largest
+// realistic tool-call payload is a few KB; 64 KB is a generous ceiling
+// that keeps extraction linear even on adversarial input.
+const MAX_RESPONSE_LEN = 64 * 1024;
 
 export interface ToolCall {
   readonly name: string;
@@ -19,12 +29,17 @@ export interface ToolCall {
 }
 
 export function extractToolCalls(response: string): ToolCall[] {
+  // Bound untrusted input length before the regex sink to guarantee
+  // linear-time extraction regardless of adversarial content.
+  const bounded =
+    response.length > MAX_RESPONSE_LEN ? response.slice(0, MAX_RESPONSE_LEN) : response;
+
   const candidates: string[] = [];
 
   // 1. Fenced blocks (prefer the LAST — model often emits draft + final).
   FENCED_JSON_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = FENCED_JSON_RE.exec(response)) !== null) {
+  while ((m = FENCED_JSON_RE.exec(bounded)) !== null) {
     candidates.push(m[1] ?? '');
   }
   if (candidates.length > 0) {
@@ -33,7 +48,7 @@ export function extractToolCalls(response: string): ToolCall[] {
   }
 
   // 2. Whole response as JSON.
-  const whole = tryParseToolCallArray(response.trim());
+  const whole = tryParseToolCallArray(bounded.trim());
   if (whole !== null) return whole;
 
   return [];
