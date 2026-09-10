@@ -41,7 +41,7 @@
     "@types/node": "^22.0.0",
     "nexus-agents": "^2.72.1",
     "typescript": "^5.9.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.11"
   },
   "repository": {
     "type": "git",
